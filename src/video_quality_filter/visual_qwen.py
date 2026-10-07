@@ -166,7 +166,7 @@ def _from_pretrained(model_id: str, dtype, device_map: str | None):
     elif hasattr(transformers, "AutoModelForVision2Seq"):
         model_cls = transformers.AutoModelForVision2Seq
     else:
-        raise RuntimeError("Нужен transformers>=4.49 с поддержкой vision-language моделей")
+        raise RuntimeError("Нужен transformers>=4.57: в нём есть Qwen3-VL")
     kwargs = {"trust_remote_code": True}
     if device_map is not None:
         kwargs["device_map"] = device_map

@@ -16,13 +16,13 @@ dependencies = [
 [project.optional-dependencies]
 vlm = [
     "torch>=2.2",
-    "transformers>=4.49",
+    "transformers>=4.57",
     "accelerate>=0.34",
     "qwen-vl-utils>=0.0.8",
 ]
 internvideo = [
     "torch>=2.2",
-    "transformers>=4.49",
+    "transformers>=4.57",
     "torchvision>=0.17",
     "einops>=0.7",
     "timm>=0.9",

@@ -24,7 +24,7 @@ class VisualConfig:
 
 @dataclass
 class QwenConfig:
-    model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct"
+    model_id: str = "Qwen/Qwen3-VL-8B-Instruct"
     device: str = "auto"
     max_new_tokens: int = 256
 
