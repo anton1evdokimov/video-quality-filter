@@ -1,0 +1,79 @@
+# Пороги фильтрации не смешиваются в один score.
+# null отключает проверку. Исходные видео не удаляются.
+# Высокий FPS не отклоняется: fps_processed — частота после приведения к target_fps.
+
+extensions: [mp4, mov, mkv, webm, avi, m4v]
+recursive: true
+output_dir: reports
+target_fps: 24.0
+probe_timeout_sec: 30.0
+run_heavy_on_technical_fail: false
+
+frames:
+  count: 4
+  max_side: 512
+  timeout_sec: 30.0
+
+visual:
+  backend: heuristic  # heuristic | qwen_vl
+
+qwen:
+  model_id: Qwen/Qwen2.5-VL-3B-Instruct
+  device: auto
+  max_new_tokens: 256
+
+vlm:
+  backend: "off"  # off | qwen_vl
+
+video_text:
+  backend: "off"  # off | internvideo2
+  model_id: OpenGVLab/InternVideo2-Stage2_1B-224p-f4
+  device: auto
+  num_frames: 4
+
+dedup:
+  embedding: frame_histogram  # frame_histogram | internvideo2
+  cluster_similarity: 0.92
+  near_duplicate_similarity: 0.98
+
+audio:
+  sample_rate: 16000
+  max_analyze_sec: 180.0
+  silence_threshold_db: -40.0
+  extract_timeout_sec: 120.0
+  weight_silence: 0.45
+  weight_energy: 0.30
+  weight_clipping: 0.25
+
+filtering:
+  min_duration: 1.0
+  max_duration: 7200.0
+  min_fps: 8.0
+  min_width: 256
+  min_height: 256
+  allowed_codecs: [h264, hevc, vp9, av1, mpeg4]
+  max_av_duration_diff: 1.0
+  require_audio: false
+  reject_unknown_fps: true
+  min_aesthetic_score: 0.2
+  max_watermark_probability: 0.95
+  max_text_area_ratio: 0.85
+  min_semantic_consistency: null
+  min_temporal_coverage: null
+  min_completeness: null
+  max_hallucination: null
+  min_video_text_cosine: null
+  max_silence_ratio: 0.95
+  min_rms: null
+  max_clipping_ratio: 0.02
+  reject_near_duplicates: false
+  require_visual: false
+  require_vlm: false
+  require_video_text: false
+
+storage:
+  enabled: false
+  bucket: ""
+  prefix: metadata
+  endpoint_url: ""
+  region: ""

@@ -1,0 +1,24 @@
+# Тяжёлые модели. Перед запуском:
+#   pip install -e ".[vlm,internvideo]"
+# Видео никуда не отправляются. В S3/MinIO уходят только JSONL и Parquet, если storage.enabled.
+
+visual:
+  backend: qwen_vl
+
+vlm:
+  backend: qwen_vl
+
+video_text:
+  backend: internvideo2
+
+dedup:
+  embedding: internvideo2
+
+filtering:
+  min_semantic_consistency: 0.4
+  min_temporal_coverage: 0.4
+  min_completeness: 0.4
+  max_hallucination: 0.5
+  min_video_text_cosine: 0.2
+  require_vlm: true
+  require_video_text: true
