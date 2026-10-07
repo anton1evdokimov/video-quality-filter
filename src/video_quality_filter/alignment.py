@@ -36,6 +36,92 @@ _FLASH_IMPORT_PATTERN = re.compile(
     r"^from flash_attn\.bert_padding import unpad_input, pad_input\n",
     re.M,
 )
+_MODELING_UTILS_IMPORT = re.compile(
+    r"from transformers\.modeling_utils import \(\s*PreTrainedModel\s*,\s*"
+    r"apply_chunking_to_forward\s*,\s*"
+    r"find_pruneable_heads_and_indices\s*,\s*"
+    r"prune_linear_layer\s*\)",
+    re.S,
+)
+_PREVIOUS_HELPER_IMPORT = re.compile(
+    r"from transformers\.modeling_utils import PreTrainedModel\n"
+    r"try:\n"
+    r"    from transformers\.pytorch_utils import \(\n"
+    r"        apply_chunking_to_forward,\n"
+    r"        find_pruneable_heads_and_indices,\n"
+    r"        prune_linear_layer,\n"
+    r"    \)\n"
+    r"except ImportError:\n"
+    r"    from transformers\.modeling_utils import \(\n"
+    r"        apply_chunking_to_forward,\n"
+    r"        find_pruneable_heads_and_indices,\n"
+    r"        prune_linear_layer,\n"
+    r"    \)",
+    re.M,
+)
+_LOCAL_BERT_HELPERS = '''from transformers.modeling_utils import PreTrainedModel
+
+def apply_chunking_to_forward(forward_fn, chunk_size, chunk_dim, *input_tensors):
+    if chunk_size <= 0:
+        return forward_fn(*input_tensors)
+    num_chunks = input_tensors[0].shape[chunk_dim] // chunk_size
+    chunks = tuple(tensor.chunk(num_chunks, dim=chunk_dim) for tensor in input_tensors)
+    outputs = tuple(forward_fn(*parts) for parts in zip(*chunks))
+    return torch.cat(outputs, dim=chunk_dim)
+
+def prune_linear_layer(layer, index, dim=0):
+    index = index.to(layer.weight.device)
+    weight = layer.weight.index_select(dim, index).detach().clone()
+    bias = None
+    if layer.bias is not None:
+        bias = layer.bias.detach().clone() if dim == 1 else layer.bias[index].detach().clone()
+    new_size = list(layer.weight.size())
+    new_size[dim] = len(index)
+    new_layer = nn.Linear(new_size[1], new_size[0], bias=layer.bias is not None).to(layer.weight.device)
+    new_layer.weight.requires_grad_(False)
+    new_layer.weight.copy_(weight.contiguous())
+    new_layer.weight.requires_grad_(True)
+    if bias is not None:
+        new_layer.bias.requires_grad_(False)
+        new_layer.bias.copy_(bias.contiguous())
+        new_layer.bias.requires_grad_(True)
+    return new_layer
+
+def find_pruneable_heads_and_indices(heads, n_heads, head_size, already_pruned_heads):
+    mask = torch.ones(n_heads, head_size)
+    heads = set(heads) - set(already_pruned_heads)
+    for head in heads:
+        shifted = head - sum(1 for pruned in already_pruned_heads if pruned < head)
+        mask[shifted] = 0
+    keep = mask.view(-1).contiguous().eq(1)
+    index = torch.arange(keep.numel())[keep].long()
+    return heads, index
+'''
+_TOKEN_IMPORT = re.compile(
+    r"from transformers\.tokenization_utils import PreTrainedTokenizer, _is_control, _is_punctuation, _is_whitespace"
+)
+_TOKEN_HELPERS = '''import unicodedata
+try:
+    from transformers.tokenization_utils import PreTrainedTokenizer
+except ImportError:
+    from transformers.tokenization_python import PreTrainedTokenizer
+
+def _is_whitespace(char):
+    if char in (" ", chr(9), chr(10), chr(13)):
+        return True
+    return unicodedata.category(char) == "Zs"
+
+def _is_control(char):
+    if char in (chr(9), chr(10), chr(13)):
+        return False
+    return unicodedata.category(char).startswith("C")
+
+def _is_punctuation(char):
+    cp = ord(char)
+    if (33 <= cp <= 47) or (58 <= cp <= 64) or (91 <= cp <= 96) or (123 <= cp <= 126):
+        return True
+    return unicodedata.category(char).startswith("P")
+'''
 
 
 def cosine_similarity(left: np.ndarray, right: np.ndarray) -> float:
@@ -125,6 +211,35 @@ def make_flash_attn_optional(path: Path) -> None:
     path.write_text(updated, encoding="utf-8")
 
 
+def make_transformers_imports_compatible(path: Path) -> None:
+    """Define BERT helpers locally. Current transformers split or removed the old imports."""
+    text = path.read_text(encoding="utf-8")
+    if "def find_pruneable_heads_and_indices(" not in text:
+        updated, count = _PREVIOUS_HELPER_IMPORT.subn(_LOCAL_BERT_HELPERS, text, count=1)
+        if count == 0:
+            updated, count = _MODELING_UTILS_IMPORT.subn(_LOCAL_BERT_HELPERS, text, count=1)
+        if count != 1:
+            raise RuntimeError("Не удалось подготовить код InternVideo2: неожиданный импорт transformers")
+        text = updated
+    if "def _is_punctuation(" not in text:
+        updated, count = _TOKEN_IMPORT.subn(_TOKEN_HELPERS, text, count=1)
+        if count != 1:
+            raise RuntimeError("Не удалось подготовить код InternVideo2: неожиданный импорт токенизатора")
+        text = updated
+    path.write_text(text, encoding="utf-8")
+
+
+def _modeling_is_patched(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    return (
+        "flash_attn_varlen_qkvpacked_func = None" in text
+        and "def find_pruneable_heads_and_indices(" in text
+        and "def _is_punctuation(" in text
+    )
+
+
 def _load_raw_stage2(config: VideoTextConfig, filename: str, device: str):
     from transformers import AutoConfig, AutoModel, BertTokenizer
 
@@ -151,7 +266,11 @@ def _load_raw_stage2(config: VideoTextConfig, filename: str, device: str):
 def _stage2_code_dir() -> Path:
     dest = Path.home() / ".cache" / "video-quality-filter" / "internvideo2-stage2-code"
     modeling = dest / "modeling_internvideo2.py"
-    if modeling.is_file() and "flash_attn_varlen_qkvpacked_func = None" in modeling.read_text(encoding="utf-8"):
+    if _modeling_is_patched(modeling) and (dest / "config.json").is_file():
+        return dest
+    if modeling.is_file() and (dest / "config.json").is_file():
+        make_flash_attn_optional(modeling)
+        make_transformers_imports_compatible(modeling)
         return dest
     try:
         from huggingface_hub import snapshot_download
@@ -172,6 +291,7 @@ def _stage2_code_dir() -> Path:
     shutil.copy2(source / "config.json", dest / "config.json")
     shutil.copytree(source / "configs", dest / "configs")
     make_flash_attn_optional(modeling)
+    make_transformers_imports_compatible(modeling)
     return dest
 
 

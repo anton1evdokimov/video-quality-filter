@@ -5,6 +5,7 @@ from video_quality_filter.alignment import (
     InternVideoAligner,
     cosine_similarity,
     make_flash_attn_optional,
+    make_transformers_imports_compatible,
     raw_checkpoint_filename,
 )
 from video_quality_filter.config import VideoTextConfig
@@ -37,6 +38,50 @@ def test_flash_attn_import_becomes_optional(tmp_path):
     text = source.read_text(encoding="utf-8")
     assert "flash_attn_varlen_qkvpacked_func = None" in text
     assert "x = 1" in text
+
+
+def test_bert_helpers_are_local_instead_of_transformers_imports(tmp_path):
+    source = tmp_path / "modeling_internvideo2.py"
+    source.write_text(
+        "from transformers.modeling_utils import (PreTrainedModel,\n"
+        "                                         apply_chunking_to_forward,\n"
+        "                                         find_pruneable_heads_and_indices,\n"
+        "                                         prune_linear_layer)\n"
+        "from transformers.tokenization_utils import PreTrainedTokenizer, _is_control, _is_punctuation, _is_whitespace\n"
+        "keep = 1\n",
+        encoding="utf-8",
+    )
+    make_transformers_imports_compatible(source)
+    text = source.read_text(encoding="utf-8")
+    assert "def find_pruneable_heads_and_indices(" in text
+    assert "def _is_punctuation(" in text
+    assert "from transformers.pytorch_utils import (" not in text
+    assert "keep = 1" in text
+
+
+def test_previous_transformers_import_patch_is_replaced(tmp_path):
+    source = tmp_path / "modeling_internvideo2.py"
+    source.write_text(
+        "from transformers.modeling_utils import PreTrainedModel\n"
+        "try:\n"
+        "    from transformers.pytorch_utils import (\n"
+        "        apply_chunking_to_forward,\n"
+        "        find_pruneable_heads_and_indices,\n"
+        "        prune_linear_layer,\n"
+        "    )\n"
+        "except ImportError:\n"
+        "    from transformers.modeling_utils import (\n"
+        "        apply_chunking_to_forward,\n"
+        "        find_pruneable_heads_and_indices,\n"
+        "        prune_linear_layer,\n"
+        "    )\n"
+        "from transformers.tokenization_utils import PreTrainedTokenizer, _is_control, _is_punctuation, _is_whitespace\n",
+        encoding="utf-8",
+    )
+    make_transformers_imports_compatible(source)
+    text = source.read_text(encoding="utf-8")
+    assert "def find_pruneable_heads_and_indices(" in text
+    assert "from transformers.pytorch_utils import (" not in text
 
 
 def test_internvideo_backend_explains_missing_extra():
