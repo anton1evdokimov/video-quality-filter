@@ -262,6 +262,24 @@ def make_ignore_keys_compatible(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+_HEAD_MASK_CALL = "        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)\n"
+_HEAD_MASK_CALL_FIXED = """        if head_mask is None or not hasattr(self, "get_head_mask"):
+            head_mask = [None] * self.config.num_hidden_layers
+        else:
+            head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+"""
+
+
+def make_head_mask_compatible(path: Path) -> None:
+    """transformers 5 removed PreTrainedModel.get_head_mask. Inference always passes None."""
+    text = path.read_text(encoding="utf-8")
+    if 'not hasattr(self, "get_head_mask")' in text:
+        return
+    if text.count(_HEAD_MASK_CALL) != 1:
+        raise RuntimeError("Не удалось подготовить код InternVideo2: неожиданный вызов get_head_mask")
+    path.write_text(text.replace(_HEAD_MASK_CALL, _HEAD_MASK_CALL_FIXED, 1), encoding="utf-8")
+
+
 def make_tied_weights_compatible(path: Path) -> None:
     """transformers 5 reads all_tied_weights_keys, which only post_init() creates."""
     text = path.read_text(encoding="utf-8")
@@ -282,6 +300,7 @@ def _modeling_is_patched(path: Path) -> bool:
         and "def _is_punctuation(" in text
         and "self.all_tied_weights_keys" in text
         and '_keys_to_ignore_on_load_unexpected = {r"pooler"}' in text
+        and 'not hasattr(self, "get_head_mask")' in text
     )
 
 
@@ -318,6 +337,7 @@ def _stage2_code_dir() -> Path:
         make_transformers_imports_compatible(modeling)
         make_tied_weights_compatible(modeling)
         make_ignore_keys_compatible(modeling)
+        make_head_mask_compatible(modeling)
         return dest
     try:
         from huggingface_hub import snapshot_download
@@ -341,6 +361,7 @@ def _stage2_code_dir() -> Path:
     make_transformers_imports_compatible(modeling)
     make_tied_weights_compatible(modeling)
     make_ignore_keys_compatible(modeling)
+    make_head_mask_compatible(modeling)
     return dest
 
 

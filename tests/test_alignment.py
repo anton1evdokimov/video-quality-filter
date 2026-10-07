@@ -5,6 +5,7 @@ from video_quality_filter.alignment import (
     InternVideoAligner,
     cosine_similarity,
     make_flash_attn_optional,
+    make_head_mask_compatible,
     make_ignore_keys_compatible,
     make_tied_weights_compatible,
     make_transformers_imports_compatible,
@@ -117,6 +118,18 @@ def test_ignore_key_patterns_become_sets(tmp_path):
     assert '[r"pooler"]' not in text
     assert '{r"pooler"}' in text
     assert '{r"position_ids", r"predictions.decoder.bias"}' in text
+
+
+def test_missing_get_head_mask_uses_empty_masks(tmp_path):
+    source = tmp_path / "modeling_internvideo2.py"
+    source.write_text(
+        "        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)\n",
+        encoding="utf-8",
+    )
+    make_head_mask_compatible(source)
+    text = source.read_text(encoding="utf-8")
+    assert 'not hasattr(self, "get_head_mask")' in text
+    assert "[None] * self.config.num_hidden_layers" in text
 
 
 def test_internvideo_backend_explains_missing_extra():
