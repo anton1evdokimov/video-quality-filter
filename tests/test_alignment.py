@@ -5,6 +5,7 @@ from video_quality_filter.alignment import (
     InternVideoAligner,
     cosine_similarity,
     make_flash_attn_optional,
+    make_tied_weights_compatible,
     make_transformers_imports_compatible,
     raw_checkpoint_filename,
 )
@@ -82,6 +83,24 @@ def test_previous_transformers_import_patch_is_replaced(tmp_path):
     text = source.read_text(encoding="utf-8")
     assert "def find_pruneable_heads_and_indices(" in text
     assert "from transformers.pytorch_utils import (" not in text
+
+
+def test_init_weights_also_sets_all_tied_weights_keys(tmp_path):
+    source = tmp_path / "modeling_internvideo2.py"
+    source.write_text(
+        "class BertModel:\n"
+        "    def __init__(self):\n"
+        "        self.init_weights()\n"
+        "\n"
+        "class BertForMaskedLM:\n"
+        "    def __init__(self):\n"
+        "        self.init_weights()\n",
+        encoding="utf-8",
+    )
+    make_tied_weights_compatible(source)
+    text = source.read_text(encoding="utf-8")
+    assert text.count("self.all_tied_weights_keys") == 2
+    assert text.count("self.init_weights()") == 2
 
 
 def test_internvideo_backend_explains_missing_extra():

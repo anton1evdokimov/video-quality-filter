@@ -229,6 +229,24 @@ def make_transformers_imports_compatible(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+_INIT_WEIGHTS = "        self.init_weights()\n"
+_INIT_WEIGHTS_WITH_TIED_KEYS = """        self.init_weights()
+        if not hasattr(self, "all_tied_weights_keys"):
+            tied = getattr(type(self), "_tied_weights_keys", None)
+            self.all_tied_weights_keys = dict(tied) if isinstance(tied, dict) else {}
+"""
+
+
+def make_tied_weights_compatible(path: Path) -> None:
+    """transformers 5 reads all_tied_weights_keys, which only post_init() creates."""
+    text = path.read_text(encoding="utf-8")
+    if "self.all_tied_weights_keys" in text:
+        return
+    if _INIT_WEIGHTS not in text:
+        raise RuntimeError("Не удалось подготовить код InternVideo2: нет init_weights()")
+    path.write_text(text.replace(_INIT_WEIGHTS, _INIT_WEIGHTS_WITH_TIED_KEYS), encoding="utf-8")
+
+
 def _modeling_is_patched(path: Path) -> bool:
     if not path.is_file():
         return False
@@ -237,6 +255,7 @@ def _modeling_is_patched(path: Path) -> bool:
         "flash_attn_varlen_qkvpacked_func = None" in text
         and "def find_pruneable_heads_and_indices(" in text
         and "def _is_punctuation(" in text
+        and "self.all_tied_weights_keys" in text
     )
 
 
@@ -271,6 +290,7 @@ def _stage2_code_dir() -> Path:
     if modeling.is_file() and (dest / "config.json").is_file():
         make_flash_attn_optional(modeling)
         make_transformers_imports_compatible(modeling)
+        make_tied_weights_compatible(modeling)
         return dest
     try:
         from huggingface_hub import snapshot_download
@@ -292,6 +312,7 @@ def _stage2_code_dir() -> Path:
     shutil.copytree(source / "configs", dest / "configs")
     make_flash_attn_optional(modeling)
     make_transformers_imports_compatible(modeling)
+    make_tied_weights_compatible(modeling)
     return dest
 
 
