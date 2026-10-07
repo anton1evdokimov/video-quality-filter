@@ -5,6 +5,7 @@ from video_quality_filter.alignment import (
     InternVideoAligner,
     cosine_similarity,
     make_flash_attn_optional,
+    make_ignore_keys_compatible,
     make_tied_weights_compatible,
     make_transformers_imports_compatible,
     raw_checkpoint_filename,
@@ -101,6 +102,21 @@ def test_init_weights_also_sets_all_tied_weights_keys(tmp_path):
     text = source.read_text(encoding="utf-8")
     assert text.count("self.all_tied_weights_keys") == 2
     assert text.count("self.init_weights()") == 2
+
+
+def test_ignore_key_patterns_become_sets(tmp_path):
+    source = tmp_path / "modeling_internvideo2.py"
+    source.write_text(
+        '    _keys_to_ignore_on_load_missing = [r"position_ids"]\n'
+        '    _keys_to_ignore_on_load_unexpected = [r"pooler"]\n'
+        '    _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]\n',
+        encoding="utf-8",
+    )
+    make_ignore_keys_compatible(source)
+    text = source.read_text(encoding="utf-8")
+    assert '[r"pooler"]' not in text
+    assert '{r"pooler"}' in text
+    assert '{r"position_ids", r"predictions.decoder.bias"}' in text
 
 
 def test_internvideo_backend_explains_missing_extra():

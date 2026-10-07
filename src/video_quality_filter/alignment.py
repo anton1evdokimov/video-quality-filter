@@ -237,6 +237,31 @@ _INIT_WEIGHTS_WITH_TIED_KEYS = """        self.init_weights()
 """
 
 
+_IGNORE_KEY_LISTS = (
+    ('    _keys_to_ignore_on_load_missing = [r"position_ids"]\n', '    _keys_to_ignore_on_load_missing = {r"position_ids"}\n'),
+    (
+        '    _keys_to_ignore_on_load_unexpected = [r"pooler"]\n',
+        '    _keys_to_ignore_on_load_unexpected = {r"pooler"}\n',
+    ),
+    (
+        '    _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]\n',
+        '    _keys_to_ignore_on_load_missing = {r"position_ids", r"predictions.decoder.bias"}\n',
+    ),
+)
+
+
+def make_ignore_keys_compatible(path: Path) -> None:
+    """transformers 5 unions these patterns with a set. InternVideo2 stores them as lists."""
+    text = path.read_text(encoding="utf-8")
+    if '_keys_to_ignore_on_load_unexpected = {r"pooler"}' in text:
+        return
+    for old, new in _IGNORE_KEY_LISTS:
+        if old not in text:
+            raise RuntimeError("Не удалось подготовить код InternVideo2: нет списка ignore-ключей")
+        text = text.replace(old, new, 1)
+    path.write_text(text, encoding="utf-8")
+
+
 def make_tied_weights_compatible(path: Path) -> None:
     """transformers 5 reads all_tied_weights_keys, which only post_init() creates."""
     text = path.read_text(encoding="utf-8")
@@ -256,6 +281,7 @@ def _modeling_is_patched(path: Path) -> bool:
         and "def find_pruneable_heads_and_indices(" in text
         and "def _is_punctuation(" in text
         and "self.all_tied_weights_keys" in text
+        and '_keys_to_ignore_on_load_unexpected = {r"pooler"}' in text
     )
 
 
@@ -291,6 +317,7 @@ def _stage2_code_dir() -> Path:
         make_flash_attn_optional(modeling)
         make_transformers_imports_compatible(modeling)
         make_tied_weights_compatible(modeling)
+        make_ignore_keys_compatible(modeling)
         return dest
     try:
         from huggingface_hub import snapshot_download
@@ -313,6 +340,7 @@ def _stage2_code_dir() -> Path:
     make_flash_attn_optional(modeling)
     make_transformers_imports_compatible(modeling)
     make_tied_weights_compatible(modeling)
+    make_ignore_keys_compatible(modeling)
     return dest
 
 
