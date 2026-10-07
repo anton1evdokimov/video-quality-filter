@@ -1,0 +1,11 @@
+# Скопируйте в .dvc/config.local (этот файл git не видит) или выполните
+# команды из README. Секреты сюда не коммитьте.
+
+[core]
+    remote = s3
+
+['remote "s3"']
+    url = s3://datasets/video-quality-filter
+    endpointurl = http://127.0.0.1:9000
+    access_key_id = YOUR_ACCESS_KEY
+    secret_access_key = YOUR_SECRET_KEY

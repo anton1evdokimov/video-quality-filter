@@ -1,0 +1,8 @@
+[core]
+    analytics = false
+    autostage = false
+    remote = local
+['remote "local"']
+    url = ../../dvc-storage
+['remote "s3"']
+    url = s3://datasets/video-quality-filter

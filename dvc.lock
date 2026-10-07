@@ -1,0 +1,26 @@
+schema: '2.0'
+stages:
+  filter:
+    cmd: video-quality-filter run --input data/raw --config config/default.yaml 
+      --output-dir data/reports
+    deps:
+    - path: config/default.yaml
+      hash: md5
+      md5: 8af89b132ba1cc6fb2710ee7efbe7f47
+      size: 1877
+    - path: data/raw
+      hash: md5
+      md5: 6ffbaaad7b4ac6e1afabed19a80b2560.dir
+      size: 0
+      nfiles: 1
+    - path: src
+      hash: md5
+      md5: b8291a6596a90061a03991514a0bdaf5.dir
+      size: 75679
+      nfiles: 20
+    outs:
+    - path: data/reports
+      hash: md5
+      md5: 726f9340cfce889c9efe28512dd199ef.dir
+      size: 355
+      nfiles: 2

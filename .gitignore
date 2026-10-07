@@ -5,7 +5,16 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-reports/
+/reports/
+# Видео и звук версионируются через DVC, не через git.
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+*.m4v
+*.wav
+*.flac
 .DS_Store
 .coverage
 htmlcov/

@@ -10,10 +10,13 @@
 ## Установка
 
 ```bash
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install -U pip
 pip install -e ".[dev]"
 ```
+
+Сначала обновите pip. В pip 23.0 и старше установка с большим деревом зависимостей падает с `AssertionError` в `get_topological_weights` уже после сборки колеса.
 
 Дополнительно:
 
@@ -21,6 +24,7 @@ pip install -e ".[dev]"
 pip install -e ".[vlm]"          # Qwen-VL: визуальные метрики и video-VLM
 pip install -e ".[internvideo]"  # InternVideo2: video/text embeddings
 pip install -e ".[storage]"      # выгрузка metadata в S3 или MinIO
+pip install -e ".[dvc]"          # DVC: версии видео и отчётов вне git
 ```
 
 ## Запуск
@@ -140,6 +144,36 @@ storage:
 ```
 
 Ключи и секреты берутся из обычного окружения boto3 (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+
+## DVC
+
+Исходные ролики и отчёты не коммитятся в git. Их содержимое хранит DVC, в репозитории остаются только указатели `data/raw.dvc` и `dvc.lock`. Фильтр по-прежнему не удаляет и не перекодирует файлы в `data/raw`.
+
+- `data/raw` — видео, которые читает пайплайн.
+- `data/reports` — `results.jsonl` и `results.parquet` после `dvc repro`.
+
+По умолчанию remote `local`: каталог `dvc-storage` рядом с репозиторием. Рядом настроен remote `s3` (`s3://datasets/video-quality-filter`) без ключей. Секреты и endpoint MinIO пишутся только в `.dvc/config.local`:
+
+```bash
+dvc remote modify --local s3 endpointurl http://127.0.0.1:9000
+dvc remote modify --local s3 access_key_id "$AWS_ACCESS_KEY_ID"
+dvc remote modify --local s3 secret_access_key "$AWS_SECRET_ACCESS_KEY"
+dvc remote default --local s3
+```
+
+Шаблон этих полей лежит в `.dvc/config.local.example`.
+
+```bash
+# новые или изменённые ролики
+dvc add data/raw
+dvc push
+
+# прогон и версия отчётов
+dvc repro
+dvc push
+```
+
+На другой машине: `dvc pull`. Обычный запуск CLI по-прежнему может писать в `./reports`; этот каталог в DVC не входит.
 
 ## Тесты
 

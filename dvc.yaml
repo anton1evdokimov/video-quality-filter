@@ -1,0 +1,14 @@
+stages:
+  filter:
+    cmd: >-
+      video-quality-filter run
+      --input data/raw
+      --config config/default.yaml
+      --output-dir data/reports
+    deps:
+      - config/default.yaml
+      - src
+      - data/raw
+    outs:
+      - data/reports:
+          persist: true
