@@ -31,7 +31,7 @@ pip install -e ".[dvc]"          # DVC: версии видео и отчёто�
 
 ```bash
 video-quality-filter run \
-  --input ./videos \
+  --input ./data/raw \
   --config config/default.yaml \
   --output-dir ./reports
 ```
@@ -39,7 +39,7 @@ video-quality-filter run \
 По умолчанию считаются технические поля, визуальные метрики по кадрам, сырые аудиопризнаки и дедуп по гистограммам кадров. Qwen3-VL-8B и InternVideo2 выключены: это отдельные проходы, их веса скачиваются локально при первом запуске `config/qwen_vl.yaml`. На CPU 8B заметно тяжелее прежней 3B: в bf16 модели нужно около 16 ГБ, в float32 — больше.
 
 ```bash
-video-quality-filter run --input ./videos --config config/qwen_vl.yaml --output-dir ./reports
+video-quality-filter run --input ./data/raw --config config/qwen_vl.yaml --output-dir ./reports
 ```
 
 Код выхода `0` — прогон завершился. Код `2` — нет каталога, сломан конфиг или нет FFmpeg.
@@ -55,6 +55,8 @@ video-quality-filter run --input ./videos --config config/qwen_vl.yaml --output-
 Video-VLM, если `vlm.backend: qwen_vl`, делает два прохода: сначала caption, затем оценки `semantic_consistency`, `temporal_coverage`, `completeness`, `hallucination`.
 
 Video-text alignment использует InternVideo2. `video_text.cosine_similarity` — косинус video embedding и text embedding caption. Это сходство в диапазоне примерно от -1 до 1, не вероятность. Softmax от `100 * cosine`, который встречается в демо retrieval, сюда не записывается.
+
+`OpenGVLab/InternVideo2-Stage2_1B-224p-f4` на Hugging Face — только файл `InternVideo2-stage2_1b-224p-f4.pt`, без `config.json`, поэтому `AutoModel` его не открывает. Загрузчик берёт код Stage2 из `OpenGVLab/InternVideo2-Stage2_6B` (не веса 6B) и этот `.pt`, а текстовый энкодер — `bert-large-uncased`. Репозиторий весов закрыт: примите условия на странице модели и выполните `huggingface-cli login`.
 
 Аудио: `silence_ratio`, `rms`, `clipping_ratio`. Рядом лежит агрегат `audio_quality`, но политика смотрит на сырые признаки.
 

@@ -27,7 +27,7 @@ vlm:
 
 video_text:
   backend: "off"  # off | internvideo2
-  model_id: OpenGVLab/InternVideo2-Stage2_1B-224p-f4
+  model_id: OpenGVLab/InternVideo2-Stage2_1B-224p-f4  # .pt без config.json; код Stage2 берётся отдельно
   device: auto
   num_frames: 4
 
