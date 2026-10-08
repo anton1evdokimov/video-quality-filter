@@ -108,6 +108,7 @@ def _vlm(frames, writer, judge, record: dict) -> None:
     record["vlm"]["caption"] = caption
     try:
         record["vlm"] = judge.judge(frames, caption)
+        logger.info("%s judge_caption=%s", record["video_id"], record["vlm"]["judge_caption"])
     except Exception as exc:
         logger.warning(
             "Судья %s не оценил caption для %s: %s",

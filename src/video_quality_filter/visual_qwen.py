@@ -76,11 +76,15 @@ class QwenClient:
 
     def judge(self, frames: list[ExtractedFrame], caption: str) -> dict:
         images = [Image.fromarray(frame.image).convert("RGB") for frame in frames]
+        judge_caption = " ".join(self._generate(images, CAPTION_PROMPT).split())
+        if not judge_caption:
+            raise ValueError("судья вернул пустой caption")
         judged = self._generate(images, JUDGE_PROMPT.format(caption=caption))
         payload = parse_json_object(judged)
         result = empty_vlm()
         result["caption"] = caption
         result["judge_model"] = self.config.model_id
+        result["judge_caption"] = judge_caption
         for key in ("semantic_consistency", "temporal_coverage", "completeness", "hallucination"):
             result[key] = round(unit_score(payload[key]), 4)
         return result

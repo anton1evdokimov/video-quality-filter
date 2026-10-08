@@ -150,7 +150,7 @@ def validate_config(config: AppConfig) -> None:
     if config.vlm.backend not in {"off", "qwen_vl"}:
         raise ValueError("vlm.backend должен быть off или qwen_vl")
     if config.vlm.backend == "qwen_vl" and config.vlm.judge_model_id.strip() == config.qwen.model_id.strip():
-        raise ValueError("vlm.judge_model_id должен отличаться от qwen.model_id: судья не пишет caption")
+        raise ValueError("vlm.judge_model_id должен отличаться от qwen.model_id")
     if not config.vlm.judge_model_id.strip():
         raise ValueError("vlm.judge_model_id не должен быть пустым")
     if config.video_text.backend not in {"off", "internvideo2"}:

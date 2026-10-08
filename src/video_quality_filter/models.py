@@ -36,6 +36,7 @@ def empty_vlm() -> dict[str, Any]:
     return {
         "caption": None,
         "judge_model": None,
+        "judge_caption": None,
         "semantic_consistency": None,
         "temporal_coverage": None,
         "completeness": None,
