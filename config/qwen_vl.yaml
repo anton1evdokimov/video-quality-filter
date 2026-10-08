@@ -1,5 +1,6 @@
 # Тяжёлые модели. Перед запуском:
 #   pip install -e ".[vlm,internvideo]"
+# Судья LLaVA-OneVision-2 требует transformers>=5.7.
 # Видео никуда не отправляются. В S3/MinIO уходят только JSONL и Parquet, если storage.enabled.
 
 visual:
@@ -7,6 +8,7 @@ visual:
 
 vlm:
   backend: qwen_vl
+  judge_model_id: lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct
 
 video_text:
   backend: internvideo2

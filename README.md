@@ -52,9 +52,17 @@ video-quality-filter run --input ./data/raw --config config/qwen_vl.yaml --outpu
 
 Визуальные метрики считаются по равномерно взятым кадрам и усредняются: `aesthetic_score`, `watermark_probability`, `text_area_ratio`. Эвристика — это прокси без скачивания модели. `visual.backend: qwen_vl` заменяет её отдельным проходом Qwen-VL.
 
-Video-VLM, если `vlm.backend: qwen_vl`, делает два прохода: сначала caption, затем оценки `semantic_consistency`, `temporal_coverage`, `completeness`, `hallucination`.
+Video-VLM, если `vlm.backend: qwen_vl`, делает два прохода разными моделями. Caption пишет `qwen.model_id` (по умолчанию Qwen3-VL-8B). Оценки `semantic_consistency`, `temporal_coverage`, `completeness`, `hallucination` ставит `vlm.judge_model_id`: `lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct`. Судья не совпадает с автором подписи. В блоке `vlm` поле `judge_model` — id этой модели. Для судьи нужен `transformers>=5.7`. В bf16 это ещё около 16 ГБ поверх Qwen.
 
 Video-text alignment использует InternVideo2. `video_text.cosine_similarity` — косинус video embedding и text embedding caption. Это сходство в диапазоне примерно от -1 до 1, не вероятность. Softmax от `100 * cosine`, который встречается в демо retrieval, сюда не записывается.
+
+`video_text.replace_words` подменяет целые слова только в строке, которую видит InternVideo2. Caption Qwen в metadata не меняется. Фильтр по-прежнему смотрит на исходный `cosine_similarity`. Рядом пишутся `caption_replaced` и `cosine_similarity_replaced`.
+
+```yaml
+video_text:
+  replace_words:
+    man: hand
+```
 
 `OpenGVLab/InternVideo2-Stage2_1B-224p-f4` на Hugging Face — только файл `InternVideo2-stage2_1b-224p-f4.pt`, без `config.json`, поэтому `AutoModel` его не открывает. Загрузчик берёт код Stage2 из `OpenGVLab/InternVideo2-Stage2_6B` (не веса 6B) и этот `.pt`, а текстовый энкодер — `bert-large-uncased`. Репозиторий весов закрыт: примите условия на странице модели и выполните `huggingface-cli login`.
 
@@ -104,6 +112,7 @@ Video-text alignment использует InternVideo2. `video_text.cosine_simil
   },
   "vlm": {
     "caption": "A man opens a car door and gets into the vehicle.",
+    "judge_model": "lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct",
     "semantic_consistency": 0.93,
     "temporal_coverage": 0.84,
     "completeness": 0.81,

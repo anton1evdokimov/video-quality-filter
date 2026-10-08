@@ -35,6 +35,7 @@ def empty_visual() -> dict[str, Any]:
 def empty_vlm() -> dict[str, Any]:
     return {
         "caption": None,
+        "judge_model": None,
         "semantic_consistency": None,
         "temporal_coverage": None,
         "completeness": None,

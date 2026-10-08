@@ -24,6 +24,7 @@ qwen:
 
 vlm:
   backend: "off"  # off | qwen_vl
+  judge_model_id: lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct
 
 video_text:
   backend: "off"  # off | internvideo2

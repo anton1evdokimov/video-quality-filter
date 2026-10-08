@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from video_quality_filter.config import AppConfig, load_config, validate_config
+from video_quality_filter.features import replace_caption_words
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,6 +18,8 @@ def test_partial_qwen_config_keeps_other_defaults():
     loaded = load_config(ROOT / "config" / "qwen_vl.yaml")
     assert loaded.visual.backend == "qwen_vl"
     assert loaded.vlm.backend == "qwen_vl"
+    assert loaded.vlm.judge_model_id == "lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct"
+    assert loaded.vlm.judge_model_id != loaded.qwen.model_id
     assert loaded.video_text.backend == "internvideo2"
     assert loaded.dedup.embedding == "internvideo2"
     assert loaded.filtering.min_video_text_cosine == 0.2
@@ -36,6 +39,23 @@ def test_disabled_threshold_must_be_null_not_a_string(tmp_path: Path):
     path.write_text("filtering:\n  min_video_text_cosine: none\n", encoding="utf-8")
     with pytest.raises(ValueError, match="min_video_text_cosine"):
         load_config(path)
+
+
+def test_replace_words_keeps_whole_words_only(tmp_path: Path):
+    path = tmp_path / "swap.yaml"
+    path.write_text("video_text:\n  replace_words:\n    man: hand\n", encoding="utf-8")
+    loaded = load_config(path)
+    assert loaded.video_text.replace_words == {"man": "hand"}
+    assert replace_caption_words("a man of photo", {"man": "hand"}) == "a hand of photo"
+    assert replace_caption_words("manual woman", {"man": "hand"}) == "manual woman"
+
+
+def test_judge_must_differ_from_caption_model():
+    config = AppConfig()
+    config.vlm.backend = "qwen_vl"
+    config.vlm.judge_model_id = config.qwen.model_id
+    with pytest.raises(ValueError, match="judge_model_id"):
+        validate_config(config)
 
 
 def test_storage_requires_a_bucket_when_enabled():

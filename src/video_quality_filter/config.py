@@ -32,6 +32,7 @@ class QwenConfig:
 @dataclass
 class VlmConfig:
     backend: str = "off"
+    judge_model_id: str = "lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct"
 
 
 @dataclass
@@ -40,6 +41,7 @@ class VideoTextConfig:
     model_id: str = "OpenGVLab/InternVideo2-Stage2_1B-224p-f4"
     device: str = "auto"
     num_frames: int = 4
+    replace_words: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -147,6 +149,10 @@ def validate_config(config: AppConfig) -> None:
         raise ValueError("visual.backend должен быть heuristic или qwen_vl")
     if config.vlm.backend not in {"off", "qwen_vl"}:
         raise ValueError("vlm.backend должен быть off или qwen_vl")
+    if config.vlm.backend == "qwen_vl" and config.vlm.judge_model_id.strip() == config.qwen.model_id.strip():
+        raise ValueError("vlm.judge_model_id должен отличаться от qwen.model_id: судья не пишет caption")
+    if not config.vlm.judge_model_id.strip():
+        raise ValueError("vlm.judge_model_id не должен быть пустым")
     if config.video_text.backend not in {"off", "internvideo2"}:
         raise ValueError("video_text.backend должен быть off или internvideo2")
     if config.dedup.embedding not in {"frame_histogram", "internvideo2"}:
@@ -159,6 +165,9 @@ def validate_config(config: AppConfig) -> None:
         raise ValueError("qwen.max_new_tokens должен быть >= 16")
     if not 1 <= config.video_text.num_frames <= 16:
         raise ValueError("video_text.num_frames должен быть в диапазоне 1..16")
+    for source in config.video_text.replace_words:
+        if not source.strip():
+            raise ValueError("video_text.replace_words: пустое слово заменять нельзя")
     if not -1.0 <= config.dedup.cluster_similarity <= 1.0:
         raise ValueError("dedup.cluster_similarity должен быть в диапазоне -1..1")
     if not -1.0 <= config.dedup.near_duplicate_similarity <= 1.0:
@@ -272,6 +281,14 @@ def _coerce(kind: Any, value: Any, key: str) -> Any:
         if not isinstance(value, list):
             raise ValueError(f"{key} должен быть списком")
         return list(value)
+    if origin is dict:
+        if not isinstance(value, dict):
+            raise ValueError(f"{key} должен быть mapping")
+        key_type, value_type = get_args(kind)
+        return {
+            _coerce(key_type, item_key, key): _coerce(value_type, item_value, key)
+            for item_key, item_value in value.items()
+        }
     if kind is float:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{key} должен быть числом")

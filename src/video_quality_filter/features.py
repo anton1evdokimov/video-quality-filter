@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def extract_record(
     config: AppConfig,
     *,
     qwen=None,
+    judge=None,
     aligner=None,
 ) -> tuple[dict, object]:
     metadata = probe_video(path, config.probe_timeout_sec)
@@ -66,8 +68,8 @@ def extract_record(
             record["visual"] = _visual(frames, config, qwen, record["_extract_errors"])
             if config.dedup.embedding == "frame_histogram":
                 embedding = frame_histogram(frames)
-            if heavy_ok and config.vlm.backend == "qwen_vl" and qwen is not None:
-                _vlm(frames, qwen, record)
+            if heavy_ok and config.vlm.backend == "qwen_vl" and qwen is not None and judge is not None:
+                _vlm(frames, qwen, judge, record)
         elif metadata.duration_sec is not None:
             record["_extract_errors"].append("frame_extraction_failed")
 
@@ -78,7 +80,7 @@ def extract_record(
                 embedding = video_vector
             caption = record["vlm"]["caption"]
             if video_vector is not None and config.video_text.backend == "internvideo2" and caption:
-                _cosine(aligner, video_vector, caption, record)
+                _cosine(aligner, video_vector, caption, record, config.video_text.replace_words)
 
         if metadata.has_audio:
             _audio(path, work, metadata.duration_sec, config, record)
@@ -96,11 +98,23 @@ def _visual(frames, config: AppConfig, qwen, errors: list[str]) -> dict:
     return estimate_visual(frames)
 
 
-def _vlm(frames, qwen, record: dict) -> None:
+def _vlm(frames, writer, judge, record: dict) -> None:
     try:
-        record["vlm"] = qwen.caption_and_judge(frames)
+        caption = writer.caption(frames)
     except Exception as exc:
-        logger.warning("VLM pass не удался для %s: %s", record["video_id"], exc)
+        logger.warning("Caption не удался для %s: %s", record["video_id"], exc)
+        record["_extract_errors"].append("vlm_failed")
+        return
+    record["vlm"]["caption"] = caption
+    try:
+        record["vlm"] = judge.judge(frames, caption)
+    except Exception as exc:
+        logger.warning(
+            "Судья %s не оценил caption для %s: %s",
+            judge.config.model_id,
+            record["video_id"],
+            exc,
+        )
         record["_extract_errors"].append("vlm_failed")
 
 
@@ -113,11 +127,29 @@ def _video_vector(path: Path, aligner, record: dict):
         return None
 
 
-def _cosine(aligner, video_vector, caption: str, record: dict) -> None:
+def replace_caption_words(caption: str, replacements: dict[str, str]) -> str:
+    """Replace whole words only. `man` does not match inside `manual` or `woman`."""
+    updated = caption
+    for source, target in replacements.items():
+        pattern = re.compile(rf"\b{re.escape(source)}\b", re.IGNORECASE)
+        updated = pattern.sub(target, updated)
+    return updated
+
+
+def _cosine(aligner, video_vector, caption: str, record: dict, replacements: dict[str, str]) -> None:
     try:
         text_vector = aligner.text_embedding(caption)
+        score = round(cosine_similarity(video_vector, text_vector), 4)
         record["video_text"]["model"] = MODEL_NAME
-        record["video_text"]["cosine_similarity"] = round(cosine_similarity(video_vector, text_vector), 4)
+        record["video_text"]["cosine_similarity"] = score
+        logger.info("%s cosine=%.4f", record["video_id"], score)
+        replaced = replace_caption_words(caption, replacements)
+        if replaced != caption:
+            replaced_vector = aligner.text_embedding(replaced)
+            replaced_score = round(cosine_similarity(video_vector, replaced_vector), 4)
+            record["video_text"]["caption_replaced"] = replaced
+            record["video_text"]["cosine_similarity_replaced"] = replaced_score
+            logger.info("%s cosine_replaced=%.4f caption=%s", record["video_id"], replaced_score, replaced)
     except Exception as exc:
         logger.warning("Cosine InternVideo2 не удался для %s: %s", record["video_id"], exc)
         if "video_text_failed" not in record["_extract_errors"]:

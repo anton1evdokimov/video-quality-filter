@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from video_quality_filter.alignment import InternVideoAligner
-from video_quality_filter.config import AppConfig
+from video_quality_filter.config import AppConfig, QwenConfig
 from video_quality_filter.dedup import apply_dedup
 from video_quality_filter.features import extract_record
 from video_quality_filter.filtering import apply_policy
@@ -60,9 +60,19 @@ def run_pipeline(input_dir: Path, config: AppConfig, *, limit: int | None = None
     video_ids = _video_ids(videos, input_dir)
 
     qwen = None
+    judge = None
     if config.visual.backend == "qwen_vl" or config.vlm.backend == "qwen_vl":
         qwen = QwenClient(config.qwen)
         qwen.warmup()
+    if config.vlm.backend == "qwen_vl":
+        judge = QwenClient(
+            QwenConfig(
+                model_id=config.vlm.judge_model_id,
+                device=config.qwen.device,
+                max_new_tokens=config.qwen.max_new_tokens,
+            )
+        )
+        judge.warmup()
     aligner = None
     if config.video_text.backend == "internvideo2" or config.dedup.embedding == "internvideo2":
         aligner = InternVideoAligner(config.video_text)
@@ -78,6 +88,7 @@ def run_pipeline(input_dir: Path, config: AppConfig, *, limit: int | None = None
                 video_id,
                 config,
                 qwen=qwen,
+                judge=judge,
                 aligner=aligner,
             )
         except Exception as exc:

@@ -67,22 +67,27 @@ class QwenClient:
             for key in ("aesthetic_score", "watermark_probability", "text_area_ratio")
         }
 
-    def caption_and_judge(self, frames: list[ExtractedFrame]) -> dict:
+    def caption(self, frames: list[ExtractedFrame]) -> str:
         images = [Image.fromarray(frame.image).convert("RGB") for frame in frames]
         caption = " ".join(self._generate(images, CAPTION_PROMPT).split())
         if not caption:
             raise ValueError("VLM вернул пустой caption")
+        return caption
+
+    def judge(self, frames: list[ExtractedFrame], caption: str) -> dict:
+        images = [Image.fromarray(frame.image).convert("RGB") for frame in frames]
         judged = self._generate(images, JUDGE_PROMPT.format(caption=caption))
         payload = parse_json_object(judged)
         result = empty_vlm()
         result["caption"] = caption
+        result["judge_model"] = self.config.model_id
         for key in ("semantic_consistency", "temporal_coverage", "completeness", "hallucination"):
             result[key] = round(unit_score(payload[key]), 4)
         return result
 
     def _generate(self, images: list[Image.Image], prompt: str) -> str:
         model, processor = self._ensure()
-        inputs = _prepare_inputs(processor, images, prompt)
+        inputs = _prepare_inputs(processor, images, prompt, self.config.model_id)
         device = next(model.parameters()).device
         if hasattr(inputs, "to"):
             inputs = inputs.to(device)
@@ -96,7 +101,7 @@ class QwenClient:
             )
         input_len = inputs["input_ids"].shape[-1]
         new_tokens = generated[:, input_len:] if generated.shape[-1] > input_len else generated
-        return processor.batch_decode(new_tokens, skip_special_tokens=True)[0].strip()
+        return _decode(processor, new_tokens)
 
     def _ensure(self):
         if self._model is not None and self._processor is not None:
@@ -109,11 +114,19 @@ class QwenClient:
 def load_qwen(config: QwenConfig):
     try:
         import torch
+        import transformers
         from transformers import AutoProcessor
     except ImportError as exc:
         raise RuntimeError(
             'Бэкенд qwen_vl требует дополнительные пакеты: pip install -e ".[vlm]"'
         ) from exc
+    if _is_llava_onevision(config.model_id):
+        major, minor = (int(part) for part in transformers.__version__.split(".")[:2])
+        if (major, minor) < (5, 7):
+            raise RuntimeError(
+                "LLaVA-OneVision-2 требует transformers>=5.7. "
+                f"Сейчас установлен {transformers.__version__}."
+            )
     dtype, device_map, move_to = _placement(torch, config.device)
     model = _from_pretrained(config.model_id, dtype=dtype, device_map=device_map)
     if move_to is not None:
@@ -176,7 +189,19 @@ def _from_pretrained(model_id: str, dtype, device_map: str | None):
         return model_cls.from_pretrained(model_id, torch_dtype=dtype, **kwargs)
 
 
-def _prepare_inputs(processor, images: list[Image.Image], prompt: str):
+def _is_llava_onevision(model_id: str) -> bool:
+    return "llava-onevision" in model_id.lower()
+
+
+def _decode(processor, tokens) -> str:
+    if hasattr(processor, "batch_decode"):
+        return processor.batch_decode(tokens, skip_special_tokens=True)[0].strip()
+    return processor.tokenizer.decode(tokens[0], skip_special_tokens=True).strip()
+
+
+def _prepare_inputs(processor, images: list[Image.Image], prompt: str, model_id: str):
+    if _is_llava_onevision(model_id):
+        return _prepare_inputs_llava(processor, images, prompt)
     content = [{"type": "image", "image": image} for image in images]
     content.append({"type": "text", "text": prompt})
     messages = [{"role": "user", "content": content}]
@@ -190,6 +215,14 @@ def _prepare_inputs(processor, images: list[Image.Image], prompt: str):
         )
     except (TypeError, ValueError):
         return _prepare_inputs_legacy(processor, messages)
+
+
+def _prepare_inputs_llava(processor, images: list[Image.Image], prompt: str):
+    content = [{"type": "image"} for _ in images]
+    content.append({"type": "text", "text": prompt})
+    messages = [{"role": "user", "content": content}]
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    return processor(text=[text], images=images, return_tensors="pt", padding=True)
 
 
 def _prepare_inputs_legacy(processor, messages: list[dict]):
