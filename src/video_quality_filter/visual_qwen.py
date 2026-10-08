@@ -26,6 +26,14 @@ CAPTION_PROMPT = (
     "Describe what happens, in one or two sentences. No preamble."
 )
 
+JUDGE_CAPTION_PROMPT = (
+    "These frames are in chronological order from one video. "
+    "Write exactly two sentences. "
+    "First sentence: the objects and how they are arranged at the start. "
+    "Second sentence: what enters, moves, or changes later in the sequence. "
+    "Name the visible things. Do not stop at a short phrase. No preamble."
+)
+
 JUDGE_PROMPT = (
     "The frames are in chronological order. The caption below was written for this video.\n"
     "Caption: {caption}\n"
@@ -76,7 +84,7 @@ class QwenClient:
 
     def judge(self, frames: list[ExtractedFrame], caption: str) -> dict:
         images = [Image.fromarray(frame.image).convert("RGB") for frame in frames]
-        judge_caption = " ".join(self._generate(images, CAPTION_PROMPT).split())
+        judge_caption = " ".join(self._generate(images, JUDGE_CAPTION_PROMPT).split())
         if not judge_caption:
             raise ValueError("судья вернул пустой caption")
         judged = self._generate(images, JUDGE_PROMPT.format(caption=caption))
