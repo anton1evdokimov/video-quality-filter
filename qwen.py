@@ -1,14 +1,16 @@
 import sys
+import tempfile
 from pathlib import Path
 
-import torch
-from transformers import AutoModelForImageTextToText, AutoProcessor
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
-MAX_NEW_TOKENS = 512
-# Кадр до 480×480, весь ролик — не больше 32 кадров: иначе длинное видео не влезает в память.
-FRAME_PIXELS = 480 * 480
-MAX_FRAMES = 32
+import torch
+from PIL import Image
+
+from video_quality_filter.config import FramesConfig, QwenConfig
+from video_quality_filter.extract import extract_frames
+from video_quality_filter.probe import probe_video
+from video_quality_filter.visual_qwen import load_qwen
 
 
 def main():
@@ -22,16 +24,34 @@ def main():
         print(f"❌ Файл не найден по пути: {video_path}")
         return
 
-    print(f"🚀 Загрузка {MODEL_ID}...")
-    model = _load_model()
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
-    _limit_video(processor)
+    frames_config = FramesConfig()
+    probed = probe_video(video_file, timeout=frames_config.timeout_sec)
+    if probed.probe_error or not probed.duration_sec:
+        print(f"❌ Не удалось прочитать видео: {probed.probe_error or 'нет длительности'}")
+        return
+
+    print("🎞️ Снимаю кадры...")
+    with tempfile.TemporaryDirectory() as temporary:
+        extracted, warnings = extract_frames(
+            video_file,
+            probed.duration_sec,
+            frames_config,
+            Path(temporary),
+        )
+        images = [Image.fromarray(frame.image).convert("RGB") for frame in extracted]
+    for warning in warnings:
+        print(f"⚠️ {warning}")
+    if not images:
+        print("❌ Кадры не сняты")
+        return
+
+    config = QwenConfig(max_new_tokens=512)
+    print(f"🚀 Загрузка {config.model_id}...")
+    model, processor = load_qwen(config)
 
     chat_history = []
     is_first_turn = True
-    video_uri = video_file.resolve().as_uri()
-
-    print(f"🎞️ Видео: 1 кадр в секунду, не больше {MAX_FRAMES} кадров.")
+    print(f"🎞️ Кадров: {len(images)}, как в пайплайне (frames.count={frames_config.count}).")
     print("\n✨ Модель готова к работе! Пишите свои вопросы. Для выхода введите 'exit' или 'quit'.")
     print("-" * 60)
 
@@ -42,32 +62,21 @@ def main():
             except (EOFError, KeyboardInterrupt):
                 print("\n👋 Чат завершен.")
                 break
-
             if not user_input:
                 continue
             if user_input.lower() in {"exit", "quit", "выход"}:
                 print("👋 Чат завершен.")
                 break
 
+            content = [{"type": "text", "text": user_input}]
             if is_first_turn:
-                user_content = [
-                    {
-                        "type": "video",
-                        "video": video_uri,
-                        "fps": 1.0,
-                        "max_pixels": FRAME_PIXELS,
-                    },
-                    {"type": "text", "text": user_input},
-                ]
+                content = [{"type": "image", "image": image} for image in images] + content
                 is_first_turn = False
-            else:
-                user_content = [{"type": "text", "text": user_input}]
+            chat_history.append({"role": "user", "content": content})
 
-            chat_history.append({"role": "user", "content": user_content})
             print("🤖 Qwen думает...")
-            output_text = _answer(model, processor, chat_history)
+            output_text = _answer(model, processor, chat_history, config.max_new_tokens)
             print(f"🤖 Qwen: {output_text}")
-            # Ответ ассистента — список блоков, как и реплика пользователя.
             chat_history.append(
                 {"role": "assistant", "content": [{"type": "text", "text": output_text}]}
             )
@@ -77,67 +86,28 @@ def main():
             torch.cuda.empty_cache()
 
 
-def _load_model():
+def _answer(model, processor, messages, max_new_tokens: int) -> str:
     try:
-        model = AutoModelForImageTextToText.from_pretrained(
-            MODEL_ID,
-            dtype="auto",
-            device_map="auto",
+        inputs = processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
         )
-    except TypeError:
-        model = AutoModelForImageTextToText.from_pretrained(
-            MODEL_ID,
-            torch_dtype="auto",
-            device_map="auto",
-        )
-    return model.eval()
+    except (TypeError, ValueError):
+        from video_quality_filter.visual_qwen import _prepare_inputs_legacy
 
+        inputs = _prepare_inputs_legacy(processor, messages)
 
-def _limit_video(processor):
-    video_processor = getattr(processor, "video_processor", None)
-    if video_processor is None:
-        return
-    if hasattr(video_processor, "size"):
-        video_processor.size = {
-            "longest_edge": FRAME_PIXELS * MAX_FRAMES,
-            "shortest_edge": 224 * 224,
-        }
-    if hasattr(video_processor, "fps"):
-        video_processor.fps = 1.0
-    if hasattr(video_processor, "max_frames"):
-        video_processor.max_frames = MAX_FRAMES
-
-
-def _answer(model, processor, chat_history):
-    template_kwargs = {
-        "tokenize": True,
-        "add_generation_prompt": True,
-        "return_dict": True,
-        "return_tensors": "pt",
-        "fps": 1.0,
-    }
-    try:
-        inputs = processor.apply_chat_template(chat_history, **template_kwargs)
-    except TypeError:
-        template_kwargs.pop("fps")
-        inputs = processor.apply_chat_template(chat_history, **template_kwargs)
-
-    if inputs.get("pixel_values_videos") is None:
-        raise RuntimeError(
-            "Процессор не прочитал видео. Нужен transformers с поддержкой Qwen3-VL (>=4.57)."
-        )
-
-    inputs = inputs.to(model.device)
+    device = next(model.parameters()).device
+    if hasattr(inputs, "to"):
+        inputs = inputs.to(device)
     with torch.inference_mode():
-        generated_ids = model.generate(**inputs, max_new_tokens=MAX_NEW_TOKENS)
-    generated_ids_trimmed = [
-        out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-    ]
-    return processor.batch_decode(
-        generated_ids_trimmed,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
-    )[0].strip()
+        generated = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+    input_len = inputs["input_ids"].shape[-1]
+    new_tokens = generated[:, input_len:] if generated.shape[-1] > input_len else generated
+    return processor.batch_decode(new_tokens, skip_special_tokens=True)[0].strip()
 
 
 if __name__ == "__main__":
