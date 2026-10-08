@@ -1,0 +1,12 @@
+# MinIO для роликов и отчётов. Секреты сюда не писать:
+# AWS_ACCESS_KEY_ID и AWS_SECRET_ACCESS_KEY берутся из окружения
+# или из .dvc/config.local, если переменные не заданы.
+
+storage:
+  enabled: true
+  bucket: datasets
+  prefix: metadata
+  videos_prefix: videos
+  endpoint_url: http://127.0.0.1:9000
+  region: us-east-1
+  read_videos: false
