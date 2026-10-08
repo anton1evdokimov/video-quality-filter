@@ -97,8 +97,10 @@ class StorageConfig:
     enabled: bool = False
     bucket: str = ""
     prefix: str = "metadata"
+    videos_prefix: str = "videos"
     endpoint_url: str = ""
     region: str = ""
+    read_videos: bool = False
 
 
 @dataclass
@@ -216,8 +218,12 @@ def validate_config(config: AppConfig) -> None:
         ("max_clipping_ratio", policy.max_clipping_ratio, 0.0, 1.0),
     ):
         _optional_unit(f"filtering.{name}", value, low=low, high=high)
+    if config.storage.read_videos and not config.storage.enabled:
+        raise ValueError("storage.read_videos требует storage.enabled = true")
     if config.storage.enabled and not config.storage.bucket.strip():
         raise ValueError("storage.bucket обязателен, когда storage.enabled = true")
+    if (config.storage.enabled or config.storage.read_videos) and not config.storage.videos_prefix.strip():
+        raise ValueError("storage.videos_prefix не должен быть пустым")
 
 
 def _optional_unit(name: str, value: float | None, *, low: float, high: float | None) -> None:

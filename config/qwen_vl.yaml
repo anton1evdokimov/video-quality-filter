@@ -1,7 +1,7 @@
 # Тяжёлые модели. Перед запуском:
 #   pip install -e ".[vlm,internvideo]"
 # Судья LLaVA-OneVision-2 требует transformers>=5.7.
-# Видео никуда не отправляются. В S3/MinIO уходят только JSONL и Parquet, если storage.enabled.
+# Отчёты уходят в MinIO, если storage.enabled. Ролики — команда upload, прогон их читает с --from-storage.
 
 visual:
   backend: qwen_vl

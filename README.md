@@ -1,6 +1,6 @@
 # video-quality-filter
 
-Пайплайн metadata для видео-датасетов перед обучением мультимодальных моделей. Он сначала снимает признаки, затем отдельно применяет политику фильтрации. Исходные ролики только читаются: кадры и фрагмент звука живут во временном каталоге и удаляются после каждого файла. В объектное хранилище, если оно включено, уходят только JSONL и Parquet.
+Пайплайн metadata для видео-датасетов перед обучением мультимодальных моделей. Он сначала снимает признаки, затем отдельно применяет политику фильтрации. Исходные ролики только читаются: кадры и фрагмент звука живут во временном каталоге и удаляются после каждого файла. В MinIO, если хранилище включено, уходят JSONL и Parquet. Ролики из `data/raw` туда же кладёт `upload`, а `run --from-storage` читает уже их, не локальный каталог.
 
 ## Требования
 
@@ -151,11 +151,20 @@ storage:
   enabled: true
   bucket: datasets
   prefix: metadata
+  videos_prefix: videos
   endpoint_url: http://localhost:9000
   region: us-east-1
+  read_videos: false
 ```
 
-Ключи и секреты берутся из обычного окружения boto3 (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+`prefix` — отчёты. `videos_prefix` — сами ролики, с теми же относительными путями, что в `data/raw`. Ключи берутся из окружения boto3 (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). Если `endpoint_url` пустой, endpoint и ключи читаются из `.dvc/config.local` remote `s3`.
+
+```bash
+video-quality-filter upload --input data/raw --config config/default.yaml
+video-quality-filter run --from-storage --config config/default.yaml --output-dir ./reports
+```
+
+`--from-storage` скачивает объекты `videos/` во временный каталог, прогоняет их и удаляет копию. Локальный `data/raw` при этом не меняется. `--input` вместе с `--from-storage` не передаётся.
 
 ## DVC
 
@@ -164,7 +173,11 @@ storage:
 - `data/raw` — видео, которые читает пайплайн.
 - `data/reports` — `results.jsonl` и `results.parquet` после `dvc repro`.
 
-По умолчанию remote `local`: каталог `dvc-storage` рядом с репозиторием. Рядом настроен remote `s3` (`s3://datasets/video-quality-filter`) без ключей. Секреты и endpoint MinIO пишутся только в `.dvc/config.local`:
+По умолчанию remote `local`: каталог `dvc-storage` рядом с репозиторием. Рядом настроен remote `s3` (`s3://datasets/video-quality-filter`) без ключей. Это тот же MinIO, что и у пайплайна, но другой префикс. DVC пишет кэш в `s3://datasets/video-quality-filter/files/md5/...`. Пайплайн пишет ролики в `s3://datasets/videos/...`. `dvc push` не затирает `videos/`, `upload` не пишет в `files/md5`. Если `storage.videos_prefix` попадает в `files`, команда останавливается.
+
+`dvc repro` по-прежнему читает локальный `data/raw`. Прогон из MinIO — отдельная команда `run --from-storage`, она не заменяет `dvc pull`.
+
+Секреты и endpoint MinIO пишутся только в `.dvc/config.local`:
 
 ```bash
 dvc remote modify --local s3 endpointurl http://127.0.0.1:9000

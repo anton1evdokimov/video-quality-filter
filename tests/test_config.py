@@ -63,3 +63,10 @@ def test_storage_requires_a_bucket_when_enabled():
     config.storage.enabled = True
     with pytest.raises(ValueError, match="bucket"):
         validate_config(config)
+
+
+def test_reading_videos_requires_storage():
+    config = AppConfig()
+    config.storage.read_videos = True
+    with pytest.raises(ValueError, match="read_videos"):
+        validate_config(config)

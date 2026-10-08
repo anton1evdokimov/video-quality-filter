@@ -17,7 +17,7 @@ from video_quality_filter.dedup import apply_dedup
 from video_quality_filter.features import extract_record
 from video_quality_filter.filtering import apply_policy
 from video_quality_filter.report import write_reports
-from video_quality_filter.storage import upload_metadata
+from video_quality_filter.storage import repo_root_from, upload_metadata
 from video_quality_filter.visual_qwen import QwenClient
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,11 @@ def run_pipeline(input_dir: Path, config: AppConfig, *, limit: int | None = None
 
     public = [{key: record[key] for key in PUBLIC_KEYS} for record in records]
     jsonl_path, parquet_path = write_reports(output_dir, public)
-    uploaded = upload_metadata([jsonl_path, parquet_path], config.storage)
+    uploaded = upload_metadata(
+        [jsonl_path, parquet_path],
+        config.storage,
+        repo_root=repo_root_from(),
+    )
     errors = sum(1 for record in public if "processing_error" in record["filtering"]["reasons"])
     return RunSummary(
         total=len(public),

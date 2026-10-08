@@ -76,5 +76,7 @@ storage:
   enabled: false
   bucket: ""
   prefix: metadata
+  videos_prefix: videos
   endpoint_url: ""
   region: ""
+  read_videos: false
