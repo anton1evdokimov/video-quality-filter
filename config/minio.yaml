@@ -1,6 +1,21 @@
-# MinIO для роликов и отчётов. Секреты сюда не писать:
+# MinIO и проход Qwen-VL. Секреты сюда не писать:
 # AWS_ACCESS_KEY_ID и AWS_SECRET_ACCESS_KEY берутся из окружения
 # или из .dvc/config.local, если переменные не заданы.
+# Судья LLaVA-OneVision-2 требует transformers>=5.7 и pip install -e ".[vlm]".
+
+visual:
+  backend: qwen_vl
+
+vlm:
+  backend: qwen_vl
+  judge_model_id: lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct
+
+filtering:
+  min_semantic_consistency: 0.4
+  min_temporal_coverage: 0.4
+  min_completeness: 0.4
+  max_hallucination: 0.5
+  require_vlm: true
 
 storage:
   enabled: true

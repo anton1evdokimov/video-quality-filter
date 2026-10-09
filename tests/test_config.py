@@ -14,6 +14,18 @@ def test_default_yaml_matches_code_defaults():
     assert asdict(loaded) == asdict(AppConfig())
 
 
+def test_minio_config_enables_storage_and_vlm():
+    loaded = load_config(ROOT / "config" / "minio.yaml")
+    assert loaded.storage.enabled is True
+    assert loaded.storage.bucket == "datasets"
+    assert loaded.storage.videos_prefix == "videos"
+    assert loaded.visual.backend == "qwen_vl"
+    assert loaded.vlm.backend == "qwen_vl"
+    assert loaded.vlm.judge_model_id == "lmms-lab-encoder/LLaVA-OneVision-2-8B-Instruct"
+    assert loaded.filtering.require_vlm is True
+    assert loaded.video_text.backend == "off"
+
+
 def test_partial_qwen_config_keeps_other_defaults():
     loaded = load_config(ROOT / "config" / "qwen_vl.yaml")
     assert loaded.visual.backend == "qwen_vl"
