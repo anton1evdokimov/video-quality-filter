@@ -69,11 +69,38 @@ def test_videos_roundtrip_keeps_relative_paths(tmp_path: Path, monkeypatch: pyte
 
     uris = upload_videos(source, config, ["mp4"], repo_root=tmp_path)
 
-    assert uris == ["s3://datasets/videos/clips/a.mp4"]
+    assert uris == ["s3://datasets/videos/videos.tar"]
+    assert list(store.objects) == [("datasets", "videos/videos.tar")]
     restored = tmp_path / "restored"
     paths = download_videos(restored, config, ["mp4"], repo_root=tmp_path)
     assert paths == [restored / "clips" / "a.mp4"]
     assert paths[0].read_bytes() == b"video-a"
+    assert not (restored / "videos.tar").exists()
+
+
+def test_file_layout_uploads_each_video(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    source = tmp_path / "raw"
+    source.mkdir()
+    (source / "a.mp4").write_bytes(b"video-a")
+    store = _FakeS3()
+    monkeypatch.setattr("video_quality_filter.storage.s3_client", lambda config, repo_root=None: store)
+    config = StorageConfig(enabled=True, bucket="datasets", videos_prefix="videos", archive="files")
+    uris = upload_videos(source, config, ["mp4"], repo_root=tmp_path)
+    assert uris == ["s3://datasets/videos/a.mp4"]
+
+
+def test_tar_rejects_a_path_that_escapes_the_destination(tmp_path: Path):
+    from video_quality_filter.storage import _extract_tar
+
+    archive_path = tmp_path / "videos.tar"
+    import tarfile
+
+    with tarfile.open(archive_path, "w") as archive:
+        payload = tmp_path / "payload.mp4"
+        payload.write_bytes(b"nope")
+        archive.add(payload, arcname="../outside.mp4")
+    with pytest.raises(ValueError, match="недопустимый путь"):
+        _extract_tar(archive_path, tmp_path / "out", {"mp4"})
 
 
 def test_videos_prefix_must_stay_outside_the_dvc_cache(tmp_path: Path):

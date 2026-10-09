@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--from-storage",
         action="store_true",
-        help="Скачать видео из MinIO (storage.videos_prefix) и обработать их",
+        help="Скачать видео из MinIO одним tar (или пофайлово) и обработать их",
     )
     run.add_argument("--config", type=Path, help="YAML-конфиг. Без него используются значения по умолчанию")
     run.add_argument("--output-dir", type=Path, help="Куда писать results.jsonl и results.parquet")

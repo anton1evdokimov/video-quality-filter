@@ -84,6 +84,7 @@ storage:
   bucket: ""
   prefix: metadata
   videos_prefix: videos
+  archive: tar
   endpoint_url: ""
   region: ""
   read_videos: false

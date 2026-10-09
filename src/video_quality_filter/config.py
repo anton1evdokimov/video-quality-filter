@@ -118,6 +118,7 @@ class StorageConfig:
     bucket: str = ""
     prefix: str = "metadata"
     videos_prefix: str = "videos"
+    archive: str = "tar"
     endpoint_url: str = ""
     region: str = ""
     read_videos: bool = False
@@ -258,6 +259,8 @@ def validate_config(config: AppConfig) -> None:
         raise ValueError("storage.bucket обязателен, когда storage.enabled = true")
     if (config.storage.enabled or config.storage.read_videos) and not config.storage.videos_prefix.strip():
         raise ValueError("storage.videos_prefix не должен быть пустым")
+    if config.storage.archive not in {"files", "tar"}:
+        raise ValueError("storage.archive должен быть files или tar")
 
 
 def _optional_unit(name: str, value: float | None, *, low: float, high: float | None) -> None:

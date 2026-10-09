@@ -22,6 +22,7 @@ storage:
   bucket: datasets
   prefix: metadata
   videos_prefix: videos
+  archive: tar
   endpoint_url: http://127.0.0.1:9000
   region: us-east-1
   read_videos: false

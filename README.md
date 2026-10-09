@@ -159,19 +159,20 @@ storage:
   bucket: datasets
   prefix: metadata
   videos_prefix: videos
+  archive: tar
   endpoint_url: http://localhost:9000
   region: us-east-1
   read_videos: false
 ```
 
-`prefix` — отчёты. `videos_prefix` — сами ролики, с теми же относительными путями, что в `data/raw`. Ключи берутся из окружения boto3 (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). Если `endpoint_url` пустой, endpoint и ключи читаются из `.dvc/config.local` remote `s3`.
+`prefix` — отчёты. `videos_prefix` — ролики. При `archive: tar` команда `upload` собирает их в один несжатый `videos.tar` (видео уже сжаты) и кладёт объект `s3://<bucket>/<videos_prefix>/videos.tar`. `--from-storage` скачивает этот объект одним запросом и распаковывает его на CPU во временный каталог. Относительные пути внутри архива те же, что в `data/raw`. `archive: files` оставляет прежнюю схему: каждый ролик отдельным объектом. Ключи берутся из окружения boto3 (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). Если `endpoint_url` пустой, endpoint и ключи читаются из `.dvc/config.local` remote `s3`.
 
 ```bash
 video-quality-filter upload --input data/raw --config config/default.yaml
 video-quality-filter run --from-storage --config config/default.yaml --output-dir ./reports
 ```
 
-`--from-storage` скачивает объекты `videos/` во временный каталог, прогоняет их и удаляет копию. Локальный `data/raw` при этом не меняется. `--input` вместе с `--from-storage` не передаётся.
+`--from-storage` при `archive: tar` скачивает `videos/videos.tar` одним запросом, распаковывает его во временный каталог, прогоняет ролики и удаляет копию вместе с архивом. Локальный `data/raw` при этом не меняется. `--input` вместе с `--from-storage` не передаётся. Уже залитые пофайлово объекты `videos/` сами не читаются: нужен новый `upload`.
 
 ## DVC
 

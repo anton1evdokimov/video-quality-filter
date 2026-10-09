@@ -9,11 +9,16 @@ from __future__ import annotations
 import configparser
 import logging
 import os
+import shutil
+import tarfile
+import tempfile
 from pathlib import Path
 
 from video_quality_filter.config import StorageConfig
 
 logger = logging.getLogger(__name__)
+
+ARCHIVE_NAME = "videos.tar"
 
 
 def object_key(prefix: str, filename: str) -> str:
@@ -48,15 +53,18 @@ def upload_videos(
     ensure_videos_prefix(config, repo_root)
     if not root.is_dir():
         raise FileNotFoundError(f"каталог с видео не найден: {root}")
+    files = _video_files(root, extensions, recursive)
+    if not files:
+        raise FileNotFoundError(f"в {root} нет видео с расширениями {', '.join(extensions)}")
     client = s3_client(config, repo_root)
+    if config.archive == "tar":
+        return [_upload_tar(client, root, files, config)]
     uris: list[str] = []
-    for path in _video_files(root, extensions, recursive):
+    for path in files:
         relative = path.relative_to(root).as_posix()
         key = object_key(config.videos_prefix, relative)
         client.upload_file(str(path), config.bucket, key)
         uris.append(f"s3://{config.bucket}/{key}")
-    if not uris:
-        raise FileNotFoundError(f"в {root} нет видео с расширениями {', '.join(extensions)}")
     return uris
 
 
@@ -73,6 +81,8 @@ def download_videos(
     destination.mkdir(parents=True, exist_ok=True)
     client = s3_client(config, repo_root)
     allowed = {item.lower().lstrip(".") for item in extensions}
+    if config.archive == "tar":
+        return _download_tar(client, destination, config, allowed)
     prefix = config.videos_prefix.strip().strip("/")
     list_prefix = f"{prefix}/"
     saved: list[Path] = []
@@ -198,6 +208,62 @@ def _split_s3_url(url: str) -> tuple[str, str]:
     rest = url[len("s3://") :]
     bucket, _, prefix = rest.partition("/")
     return bucket, prefix.strip("/")
+
+
+def _upload_tar(client, root: Path, files: list[Path], config: StorageConfig) -> str:
+    key = object_key(config.videos_prefix, ARCHIVE_NAME)
+    with tempfile.TemporaryDirectory(prefix="vqf-tar-") as temporary:
+        archive_path = Path(temporary) / ARCHIVE_NAME
+        with tarfile.open(archive_path, "w") as archive:
+            for path in files:
+                archive.add(path, arcname=path.relative_to(root).as_posix(), recursive=False)
+        client.upload_file(str(archive_path), config.bucket, key)
+    uri = f"s3://{config.bucket}/{key}"
+    logger.info("Упаковано %d роликов в %s", len(files), uri)
+    return uri
+
+
+def _download_tar(client, destination: Path, config: StorageConfig, allowed: set[str]) -> list[Path]:
+    key = object_key(config.videos_prefix, ARCHIVE_NAME)
+    archive_path = destination / ARCHIVE_NAME
+    try:
+        client.download_file(config.bucket, key, str(archive_path))
+    except Exception as exc:
+        if type(exc).__name__ not in {"ClientError", "KeyError", "FileNotFoundError"}:
+            raise
+        raise FileNotFoundError(
+            f"нет архива s3://{config.bucket}/{key}. Загрузите ролики командой upload."
+        ) from exc
+    try:
+        saved = _extract_tar(archive_path, destination, allowed)
+    finally:
+        archive_path.unlink(missing_ok=True)
+    if not saved:
+        raise FileNotFoundError(f"в s3://{config.bucket}/{key} нет видео")
+    logger.info("Скачан %s, распаковано %d файлов", f"s3://{config.bucket}/{key}", len(saved))
+    return sorted(saved)
+
+
+def _extract_tar(archive_path: Path, destination: Path, allowed: set[str]) -> list[Path]:
+    saved: list[Path] = []
+    with tarfile.open(archive_path, "r") as archive:
+        for member in archive.getmembers():
+            if member.issym() or member.islnk() or not member.isfile():
+                continue
+            relative = Path(member.name)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError(f"недопустимый путь в архиве: {member.name}")
+            if relative.suffix.lower().lstrip(".") not in allowed:
+                continue
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = archive.extractfile(member)
+            if source is None:
+                continue
+            with target.open("wb") as handle:
+                shutil.copyfileobj(source, handle)
+            saved.append(target)
+    return saved
 
 
 def _video_files(root: Path, extensions: list[str], recursive: bool) -> list[Path]:
