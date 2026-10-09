@@ -70,6 +70,8 @@ video_text:
 
 Дедуп по video embedding (гистограмма кадров или InternVideo2): `cluster_id`, `nearest_video_id`, `similarity`, `is_near_duplicate`. Файлы не удаляются. При `reject_near_duplicates: true` в батче остаётся один канонический id компонента, остальные получают причину `near_duplicate`.
 
+Контент — отдельный блок. Классификация, если `content.backend: qwen_vl`, просит `qwen.model_id` выбрать одну метку из `content.labels`. Судья подпись не классифицирует. Кластеризация идёт по тому же embedding, что и дедуп, но порог `content.cluster_similarity` ниже: в один `content.cluster_id` попадают похожие ролики, а не только копии. `cluster_size` — размер этой группы. Неизвестная метка записывается как `other`. `filtering.reject_labels` отклоняет перечисленные метки с причиной `content_label_rejected`. Пустой список ничего не отклоняет.
+
 ## Фильтрация
 
 Блок `filtering` отделён от признаков:
@@ -81,7 +83,7 @@ video_text:
 
 Технические причины: `unreadable`, `no_video_stream`, `duration_too_short`, `duration_too_long`, `duration_unknown`, `resolution_too_small`, `fps_too_low`, `fps_unknown`, `codec_invalid`, `codec_not_allowed`, `audio_required_but_missing`, `av_duration_mismatch`.
 
-Остальные: `aesthetic_score_below_threshold`, `watermark_probability_above_threshold`, `text_area_ratio_above_threshold`, `semantic_consistency_below_threshold`, `temporal_coverage_below_threshold`, `completeness_below_threshold`, `hallucination_above_threshold`, `video_text_cosine_below_threshold`, `silence_ratio_above_threshold`, `rms_below_threshold`, `clipping_ratio_above_threshold`, `near_duplicate`, `frame_extraction_failed`, `visual_extraction_failed`, `vlm_failed`, `video_text_failed`, `audio_analysis_failed`, `visual_required_but_missing`, `vlm_required_but_missing`, `video_text_required_but_missing`, `processing_error`.
+Остальные: `aesthetic_score_below_threshold`, `watermark_probability_above_threshold`, `text_area_ratio_above_threshold`, `semantic_consistency_below_threshold`, `temporal_coverage_below_threshold`, `completeness_below_threshold`, `hallucination_above_threshold`, `video_text_cosine_below_threshold`, `silence_ratio_above_threshold`, `rms_below_threshold`, `clipping_ratio_above_threshold`, `near_duplicate`, `frame_extraction_failed`, `visual_extraction_failed`, `vlm_failed`, `video_text_failed`, `audio_analysis_failed`, `visual_required_but_missing`, `vlm_required_but_missing`, `video_text_required_but_missing`, `content_label_rejected`, `content_required_but_missing`, `content_classification_failed`, `processing_error`.
 
 Имена кодеков такие, как у ffprobe (`h264`, `hevc`, `vp9`, `av1`). `h265` принимается как `hevc`.
 
@@ -128,6 +130,11 @@ video_text:
     "rms": 0.18,
     "clipping_ratio": 0.002,
     "audio_quality": 0.91
+  },
+  "content": {
+    "label": "hands",
+    "cluster_id": 4,
+    "cluster_size": 3
   },
   "deduplication": {
     "cluster_id": 152,

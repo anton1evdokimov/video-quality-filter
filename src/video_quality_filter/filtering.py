@@ -24,6 +24,7 @@ def apply_policy(
     video_text = record["video_text"]
     audio = record["audio"]
     dedup = record["deduplication"]
+    content = record.get("content") or {}
     technical = record["technical"]
 
     _below(reasons, "aesthetic_score_below_threshold", visual.get("aesthetic_score"), policy.min_aesthetic_score)
@@ -69,6 +70,12 @@ def apply_policy(
         and record["video_id"] != canonical_video_id
     ):
         reasons.append("near_duplicate")
+
+    label = content.get("label")
+    if label is not None and label in policy.reject_labels:
+        reasons.append("content_label_rejected")
+    if policy.require_content and label is None:
+        reasons.append("content_required_but_missing")
 
     unique: list[str] = []
     for reason in reasons:

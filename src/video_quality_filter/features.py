@@ -12,8 +12,10 @@ from video_quality_filter.audio_quality import analyze_audio_file
 from video_quality_filter.config import AppConfig
 from video_quality_filter.embeddings import frame_histogram
 from video_quality_filter.extract import extract_audio, extract_frames
+from video_quality_filter.content import normalize_content_label
 from video_quality_filter.models import (
     empty_audio,
+    empty_content,
     empty_dedup,
     empty_filtering,
     empty_video_text,
@@ -47,6 +49,7 @@ def extract_record(
         "vlm": empty_vlm(),
         "video_text": empty_video_text(),
         "audio": empty_audio(),
+        "content": empty_content(),
         "deduplication": empty_dedup(),
         "filtering": empty_filtering(),
         "_technical_reasons": technical_reasons,
@@ -70,6 +73,8 @@ def extract_record(
                 embedding = frame_histogram(frames)
             if heavy_ok and config.vlm.backend == "qwen_vl" and qwen is not None and judge is not None:
                 _vlm(frames, qwen, judge, record)
+            if heavy_ok and config.content.backend == "qwen_vl" and qwen is not None:
+                _classify(frames, qwen, config.content.labels, record)
         elif metadata.duration_sec is not None:
             record["_extract_errors"].append("frame_extraction_failed")
 
@@ -117,6 +122,22 @@ def _vlm(frames, writer, judge, record: dict) -> None:
             exc,
         )
         record["_extract_errors"].append("vlm_failed")
+
+
+def _classify(frames, qwen, labels: list[str], record: dict) -> None:
+    try:
+        raw = qwen.classify(frames, labels)
+        label = normalize_content_label(raw, labels)
+    except Exception as exc:
+        logger.warning("Классификация контента не удалась для %s: %s", record["video_id"], exc)
+        record["_extract_errors"].append("content_classification_failed")
+        return
+    if label is None:
+        logger.warning("Классификация контента вернула неизвестную метку для %s: %s", record["video_id"], raw)
+        record["_extract_errors"].append("content_classification_failed")
+        return
+    record["content"]["label"] = label
+    logger.info("%s content_label=%s", record["video_id"], label)
 
 
 def _video_vector(path: Path, aligner, record: dict):

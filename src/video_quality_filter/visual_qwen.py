@@ -34,6 +34,20 @@ JUDGE_CAPTION_PROMPT = (
     "Name the visible things. Do not stop at a short phrase. No preamble."
 )
 
+CLASSIFY_PROMPT = (
+    "These frames are in chronological order from one video. "
+    "Choose exactly one content label from: {labels}. "
+    "person: a person is visible, not only a hand. "
+    "hands: a hand is the subject and a full person is not visible. "
+    "object: a device or object is the subject, without a person or a hand as the subject. "
+    "screen: a display, user interface, or recorded screen. "
+    "scene: a place or landscape. "
+    "text: the frames are mainly text or titles. "
+    "animation: drawn or synthetic animation. "
+    "other: none of the labels fit. "
+    'Return JSON only, no markdown: {{"label": "<one label>"}}.'
+)
+
 JUDGE_PROMPT = (
     "The frames are in chronological order. The caption below was written for this video.\n"
     "Caption: {caption}\n"
@@ -74,6 +88,14 @@ class QwenClient:
             key: round(sum(item[key] for item in scores) / len(scores), 4)
             for key in ("aesthetic_score", "watermark_probability", "text_area_ratio")
         }
+
+    def classify(self, frames: list[ExtractedFrame], labels: list[str]) -> str:
+        images = [Image.fromarray(frame.image).convert("RGB") for frame in frames]
+        text = self._generate(images, CLASSIFY_PROMPT.format(labels=", ".join(labels)))
+        payload = parse_json_object(text)
+        if "label" not in payload:
+            raise ValueError("в ответе классификации нет label")
+        return str(payload["label"])
 
     def caption(self, frames: list[ExtractedFrame]) -> str:
         images = [Image.fromarray(frame.image).convert("RGB") for frame in frames]

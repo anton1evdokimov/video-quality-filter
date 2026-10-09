@@ -37,6 +37,11 @@ dedup:
   cluster_similarity: 0.92
   near_duplicate_similarity: 0.98
 
+content:
+  backend: "off"  # off | qwen_vl
+  cluster_similarity: 0.45
+  labels: [person, hands, object, screen, scene, text, animation, other]
+
 audio:
   sample_rate: 16000
   max_analyze_sec: 180.0
@@ -68,6 +73,8 @@ filtering:
   min_rms: null
   max_clipping_ratio: 0.02
   reject_near_duplicates: false
+  reject_labels: []
+  require_content: false
   require_visual: false
   require_vlm: false
   require_video_text: false

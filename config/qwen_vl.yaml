@@ -16,6 +16,9 @@ video_text:
 dedup:
   embedding: internvideo2
 
+content:
+  backend: qwen_vl
+
 filtering:
   min_semantic_consistency: 0.4
   min_temporal_coverage: 0.4

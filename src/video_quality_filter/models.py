@@ -57,6 +57,14 @@ def empty_audio() -> dict[str, Any]:
     }
 
 
+def empty_content() -> dict[str, Any]:
+    return {
+        "label": None,
+        "cluster_id": None,
+        "cluster_size": None,
+    }
+
+
 def empty_dedup() -> dict[str, Any]:
     return {
         "cluster_id": None,

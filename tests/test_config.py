@@ -34,6 +34,8 @@ def test_partial_qwen_config_keeps_other_defaults():
     assert loaded.vlm.judge_model_id != loaded.qwen.model_id
     assert loaded.video_text.backend == "internvideo2"
     assert loaded.dedup.embedding == "internvideo2"
+    assert loaded.content.backend == "qwen_vl"
+    assert loaded.content.labels == AppConfig().content.labels
     assert loaded.filtering.min_video_text_cosine == 0.2
     assert loaded.filtering.min_duration == AppConfig().filtering.min_duration
     assert loaded.target_fps == 24.0

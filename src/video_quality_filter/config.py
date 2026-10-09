@@ -52,6 +52,24 @@ class DedupConfig:
 
 
 @dataclass
+class ContentConfig:
+    backend: str = "off"
+    cluster_similarity: float = 0.45
+    labels: list[str] = field(
+        default_factory=lambda: [
+            "person",
+            "hands",
+            "object",
+            "screen",
+            "scene",
+            "text",
+            "animation",
+            "other",
+        ]
+    )
+
+
+@dataclass
 class AudioConfig:
     sample_rate: int = 16000
     max_analyze_sec: float = 180.0
@@ -87,6 +105,8 @@ class FilteringConfig:
     min_rms: float | None = None
     max_clipping_ratio: float | None = 0.02
     reject_near_duplicates: bool = False
+    reject_labels: list[str] = field(default_factory=list)
+    require_content: bool = False
     require_visual: bool = False
     require_vlm: bool = False
     require_video_text: bool = False
@@ -119,6 +139,7 @@ class AppConfig:
     vlm: VlmConfig = field(default_factory=VlmConfig)
     video_text: VideoTextConfig = field(default_factory=VideoTextConfig)
     dedup: DedupConfig = field(default_factory=DedupConfig)
+    content: ContentConfig = field(default_factory=ContentConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     filtering: FilteringConfig = field(default_factory=FilteringConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
@@ -174,6 +195,19 @@ def validate_config(config: AppConfig) -> None:
         raise ValueError("dedup.cluster_similarity должен быть в диапазоне -1..1")
     if not -1.0 <= config.dedup.near_duplicate_similarity <= 1.0:
         raise ValueError("dedup.near_duplicate_similarity должен быть в диапазоне -1..1")
+    if config.content.backend not in {"off", "qwen_vl"}:
+        raise ValueError("content.backend должен быть off или qwen_vl")
+    if not -1.0 <= config.content.cluster_similarity <= 1.0:
+        raise ValueError("content.cluster_similarity должен быть в диапазоне -1..1")
+    config.content.labels = [item.strip().lower() for item in config.content.labels if str(item).strip()]
+    if not config.content.labels or len(config.content.labels) != len(set(config.content.labels)):
+        raise ValueError("content.labels должен быть непустым списком уникальных меток")
+    if "other" not in config.content.labels:
+        raise ValueError("content.labels должен содержать other")
+    config.filtering.reject_labels = [item.strip().lower() for item in config.filtering.reject_labels if str(item).strip()]
+    unknown_labels = sorted(set(config.filtering.reject_labels) - set(config.content.labels))
+    if unknown_labels:
+        raise ValueError("filtering.reject_labels содержит неизвестные метки: " + ", ".join(unknown_labels))
 
     frames = config.frames
     if not 1 <= frames.count <= 64:

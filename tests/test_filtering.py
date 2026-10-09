@@ -92,6 +92,17 @@ def test_near_duplicate_keeps_the_canonical_video():
     assert record["filtering"]["status"] == "accepted"
 
 
+def test_rejected_content_label_is_a_reason():
+    record = _record(content={"label": "screen", "cluster_id": 1, "cluster_size": 2})
+    apply_policy(
+        record,
+        FilteringConfig(reject_labels=["screen"]),
+        canonical_video_id="000123",
+        extract_errors=[],
+    )
+    assert record["filtering"]["reasons"] == ["content_label_rejected"]
+
+
 def test_audio_thresholds_use_raw_features():
     record = _record(audio={**empty_audio(), "silence_ratio": 0.99, "rms": 0.0, "clipping_ratio": 0.2})
     apply_policy(record, FilteringConfig(), canonical_video_id="000123", extract_errors=[])

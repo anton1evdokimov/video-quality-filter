@@ -50,7 +50,7 @@ def annotate_dedup(
             nearest_id[index] = video_ids[best_other]
             nearest_sim[index] = best_sim
 
-    cluster_ids = _component_ids(video_ids, embeddings, config.cluster_similarity)
+    cluster_ids = component_ids(embeddings, config.cluster_similarity)
     canonical = _canonical_ids(video_ids, embeddings, config.near_duplicate_similarity)
     return {
         "nearest_video_id": nearest_id,
@@ -76,8 +76,9 @@ def _similarity(left, right) -> float | None:
     return float(np.dot(a, b))
 
 
-def _component_ids(video_ids: list[str], embeddings: list, threshold: float) -> list[int]:
-    parent = list(range(len(video_ids)))
+def component_ids(embeddings: list, threshold: float) -> list[int]:
+    """Connected components where pairwise cosine is at least the threshold."""
+    parent = list(range(len(embeddings)))
 
     def find(index: int) -> int:
         while parent[index] != index:
@@ -90,12 +91,12 @@ def _component_ids(video_ids: list[str], embeddings: list, threshold: float) -> 
         if root_left != root_right:
             parent[root_right] = root_left
 
-    for left in range(len(video_ids)):
-        for right in range(left + 1, len(video_ids)):
+    for left in range(len(embeddings)):
+        for right in range(left + 1, len(embeddings)):
             similarity = _similarity(embeddings[left], embeddings[right])
             if similarity is not None and similarity >= threshold:
                 union(left, right)
-    roots = [find(index) for index in range(len(video_ids))]
+    roots = [find(index) for index in range(len(embeddings))]
     order = sorted(set(roots), key=lambda root: min(index for index, item in enumerate(roots) if item == root))
     mapping = {root: cluster_id for cluster_id, root in enumerate(order)}
     return [mapping[root] for root in roots]

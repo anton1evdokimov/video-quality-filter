@@ -13,6 +13,7 @@ from pathlib import Path
 
 from video_quality_filter.alignment import InternVideoAligner
 from video_quality_filter.config import AppConfig, QwenConfig
+from video_quality_filter.content import apply_content_clusters
 from video_quality_filter.dedup import apply_dedup
 from video_quality_filter.features import extract_record
 from video_quality_filter.filtering import apply_policy
@@ -30,6 +31,7 @@ PUBLIC_KEYS = (
     "vlm",
     "video_text",
     "audio",
+    "content",
     "deduplication",
     "filtering",
 )
@@ -61,7 +63,11 @@ def run_pipeline(input_dir: Path, config: AppConfig, *, limit: int | None = None
 
     qwen = None
     judge = None
-    if config.visual.backend == "qwen_vl" or config.vlm.backend == "qwen_vl":
+    if (
+        config.visual.backend == "qwen_vl"
+        or config.vlm.backend == "qwen_vl"
+        or config.content.backend == "qwen_vl"
+    ):
         qwen = QwenClient(config.qwen)
         qwen.warmup()
     if config.vlm.backend == "qwen_vl":
@@ -98,6 +104,7 @@ def run_pipeline(input_dir: Path, config: AppConfig, *, limit: int | None = None
         embeddings.append(embedding)
         logger.info("[%d/%d] %s technical_ok=%s", index, len(videos), video_id, record["technical"]["technical_ok"])
 
+    apply_content_clusters(records, embeddings, config.content)
     canonical = apply_dedup(records, embeddings, config.dedup)
     for record, canonical_id in zip(records, canonical):
         extract_errors = list(record.get("_extract_errors", []))
@@ -109,9 +116,12 @@ def run_pipeline(input_dir: Path, config: AppConfig, *, limit: int | None = None
         )
         record.pop("_extract_errors", None)
         logger.info(
-            "%s -> %s reasons=%s",
+            "%s -> %s label=%s cluster=%s size=%s reasons=%s",
             record["video_id"],
             record["filtering"]["status"],
+            record["content"]["label"],
+            record["content"]["cluster_id"],
+            record["content"]["cluster_size"],
             ",".join(record["filtering"]["reasons"]) or "-",
         )
 
@@ -167,6 +177,7 @@ def _video_ids(paths: list[Path], root: Path) -> list[str]:
 def _failed_record(path: Path, root: Path, video_id: str, message: str) -> tuple[dict, None]:
     from video_quality_filter.models import (
         empty_audio,
+        empty_content,
         empty_dedup,
         empty_filtering,
         empty_video_text,
@@ -197,6 +208,7 @@ def _failed_record(path: Path, root: Path, video_id: str, message: str) -> tuple
         "vlm": empty_vlm(),
         "video_text": empty_video_text(),
         "audio": empty_audio(),
+        "content": empty_content(),
         "deduplication": empty_dedup(),
         "filtering": empty_filtering(),
         "_technical_reasons": ["unreadable"],
